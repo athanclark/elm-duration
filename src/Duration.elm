@@ -72,13 +72,15 @@ handleDurationResults f m =
     a duration the animation should play over, create an update function.
     Note that the `Float`s in this function **must** be between `0 <= x <= 1` -
     just like [easing-functions](http://package.elm-lang.org/packages/elm-community/easing-functions/1.0.1).
+    Also note that there's an optional action called when the animation is completed.
 -}
 updateDuration : List (Float -> Float, Float -> a)
               -> Time
+              -> Maybe a
               -> DurationMsg
               -> Duration
               -> (Duration, Cmd (DurationResults a))
-updateDuration animations duration action model =
+updateDuration animations duration mMainAction action model =
   case action of
     Start ->
       case model.elapsed of
@@ -99,10 +101,16 @@ updateDuration animations duration action model =
         Just past ->
           if now - past > duration
           then ( initDuration
-               , Cmd.batch <| List.map -- complete them
-                   (\(_, act) -> Task.perform Debug.crash Issue <|
-                                   Task.succeed <| act 1)
-                   animations
+               , Cmd.batch <|
+                   ( List.map -- complete them
+                       (\(_, act) -> Task.perform Debug.crash Issue <|
+                                       Task.succeed <| act 1)
+                       animations
+                   ) ++ [ case mMainAction of
+                            Nothing -> Cmd.none
+                            Just a  -> Task.perform Debug.crash Issue <|
+                                         Task.succeed a
+                        ]
                )
           else ( { model | elapsed = Just now }
                , let current = now - past / duration
