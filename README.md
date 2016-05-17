@@ -36,7 +36,7 @@ updateMyModel action model =
           )
 
 subscriptions : MyModel -> Sub MyMsg
-subscriptions = Sub.map DurationMsg durationSubscriptions
+subscriptions = Sub.map DurationMsg <| durationSubscriptions model.duration
 
 view : MyModel -> Html MyMsg
 view model =
