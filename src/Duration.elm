@@ -115,7 +115,7 @@ updateDuration animations duration mMainAction action model =
                                          Task.succeed a
                         ]
                )
-          else ( { model | elapsed = Just now }
+          else ( model
                , let current = (now - past) / duration
                  in  Cmd.batch <| List.map
                        (\(anim,act) -> Task.perform Debug.crash Issue <|
