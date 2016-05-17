@@ -1,5 +1,5 @@
 {
-    "version": "1.0.1",
+    "version": "2.0.0",
     "summary": "Issue messages in the browser's refresh rate, over a duration",
     "repository": "https://github.com/athanclark/elm-duration.git",
     "license": "BSD3",
