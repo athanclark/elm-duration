@@ -94,17 +94,20 @@ updateDuration animations duration mMainAction action model =
           )
     Tick now ->
       case model.elapsed of
-        Nothing -> -- fail silently
-          ( initDuration
-          , Cmd.none
+        Nothing ->
+          ( { model | elapsed = Just now }
+          , Cmd.batch <| List.map -- start them
+              (\(anim,act) -> Task.perform Debug.crash Issue <|
+                                Task.succeed <| act <| anim 0)
+              animations
           )
         Just past ->
           if now - past > duration
           then ( initDuration
                , Cmd.batch <|
                    ( List.map -- complete them
-                       (\(_, act) -> Task.perform Debug.crash Issue <|
-                                       Task.succeed <| act 1)
+                       (\(anim,act) -> Task.perform Debug.crash Issue <|
+                                         Task.succeed <| act <| anim 1)
                        animations
                    ) ++ [ case mMainAction of
                             Nothing -> Cmd.none
