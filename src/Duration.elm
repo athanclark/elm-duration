@@ -1,11 +1,10 @@
 module Duration exposing
-  ( Duration
-  , initDuration
-  , DurationMsg (Start)
-  , DurationResults
-  , handleDurationResults
-  , updateDuration
-  , durationSubscriptions
+  ( Model
+  , init
+  , Msg (Start)
+  , handle
+  , update
+  , subscriptions
   )
 
 {-|
@@ -41,32 +40,29 @@ import AnimationFrame as Anim
 
 
 {-| The state of the duration -}
-type alias Duration =
-  { elapsed : Maybe Time
+type alias Model a =
+  { elapsed      : Maybe Time
+  , onCompletion : Cmd a
   }
 
 {-| The initial state of the duration -}
-initDuration : Duration
-initDuration =
-  { elapsed = Nothing
+init : Model a
+init =
+  { elapsed      = Nothing
+  , onCompletion = Cmd.none
   }
 
 {-| Actions of the duration; just use `Start` to kick it off -}
-type DurationMsg
-  = Start
+type Msg a
+  = Start (Cmd a -> Cmd a)
   | Tick Time
 
-{-| Either another duration message, or the action you'd want issued -}
-type DurationResults a
-  = More DurationMsg
-  | Issue a
-
 {-| Given a way to handle duration messages, you can handle the results -}
-handleDurationResults : (DurationMsg -> a) -> DurationResults a -> a
-handleDurationResults f m =
+handle : (Msg a -> a) -> Result (Msg a) a -> a
+handle f m =
   case m of
-    More x -> f x
-    Issue x -> x
+    Err x -> f x
+    Ok x  -> x
 
 {-| Given a set of _parallel_ animations and their actions to issue, and
     a duration the animation should play over, create an update function.
@@ -74,61 +70,48 @@ handleDurationResults f m =
     just like [easing-functions](http://package.elm-lang.org/packages/elm-community/easing-functions/1.0.1).
     Also note that there's an optional action called when the animation is completed.
 -}
-updateDuration : List (Float -> Float, Float -> a)
-              -> Time
-              -> Maybe a
-              -> DurationMsg
-              -> Duration
-              -> (Duration, Cmd (DurationResults a))
-updateDuration animations duration mMainAction action model =
+update : (Time -> Cmd a)
+      -> Time
+      -> Msg a
+      -> Model a
+      -> (Model a, Cmd (Result (Msg a) a))
+update actions duration mMainAction action model =
   case action of
-    Start ->
+    Start withCompletion ->
       case model.elapsed of
         Just _ ->
-          ( model
+          ( { model | onCompletion = withCompletion model.onCompletion }
           , Cmd.none
           )
         Nothing ->
-          ( model
-          , Task.perform Debug.crash (More << Tick) Time.now
+          ( { model | onCompletion = withCompletion model.onCompletion }
+          , Task.perform Debug.crash (Err << Tick) Time.now
           )
     Tick now ->
       case model.elapsed of
         Nothing ->
           ( { model | elapsed = Just now }
-          , Cmd.batch <| List.map -- start them
-              (\(anim,act) -> Task.perform Debug.crash Issue <|
-                                Task.succeed <| act <| anim 0)
-              animations
+          , actions 0
           )
         Just past ->
           if now - past > duration
-          then ( initDuration
-               , Cmd.batch <|
-                   ( List.map -- complete them
-                       (\(anim,act) -> Task.perform Debug.crash Issue <|
-                                         Task.succeed <| act <| anim 1)
-                       animations
-                   ) ++ [ case mMainAction of
-                            Nothing -> Cmd.none
-                            Just a  -> Task.perform Debug.crash Issue <|
-                                         Task.succeed a
-                        ]
+          then ( { model | elapsed = Nothing }
+               , Cmd.map Ok <| Cmd.batch
+                   [ actions 1
+                   , model.onCompletion
+                   ]
                )
           else ( model
                , let current = (now - past) / duration
-                 in  Cmd.batch <| List.map
-                       (\(anim,act) -> Task.perform Debug.crash Issue <|
-                                         Task.succeed <| act <| anim current)
-                       animations
+                 in Cmd.map Ok <| actions current
                )
 
 
 {-| The subscriptions for the duration - attaching to the current time every
     browser screen refresh.
 -}
-durationSubscriptions : Duration -> Sub DurationMsg
-durationSubscriptions model =
+subscriptions : Model a -> Sub (Msg a)
+subscriptions model =
   case model.elapsed of
     Nothing -> Sub.none
     Just _  -> Anim.times Tick
