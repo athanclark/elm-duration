@@ -1,13 +1,14 @@
 {
-    "version": "2.0.4",
-    "summary": "Issue messages in the browser's refresh rate, over a duration",
+    "version": "3.0.0",
+    "summary": "Issue messages each frame over a duration of time",
     "repository": "https://github.com/athanclark/elm-duration.git",
     "license": "BSD3",
     "source-directories": [
         "src"
     ],
     "exposed-modules": [
-        "Duration"
+        "Duration",
+        "Duration.Revert"
     ],
     "dependencies": {
         "elm-lang/core": "4.0.0 <= v < 5.0.0",
