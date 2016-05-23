@@ -1,8 +1,7 @@
-module Duration exposing
+module Duration.Revert exposing
   ( Model
   , init
-  , Msg (Start)
-  , handle
+  , Msg (Forward, Reverse, Toggle)
   , update
   , subscriptions
   )
@@ -25,10 +24,6 @@ module Duration exposing
 
 @docs subscriptions
 
-### Result Handling
-
-@docs handle
-
 
 -}
 
@@ -37,9 +32,13 @@ import Task
 import AnimationFrame as Anim
 
 
+type Direction
+  = Forwards
+  | Backwards
+
 {-| The state of the duration -}
 type alias Model a =
-  { elapsed      : Maybe Time
+  { elapsed      : Maybe (Time, Direction)
   , onCompletion : Cmd a
   }
 
@@ -50,61 +49,112 @@ init =
   , onCompletion = Cmd.none
   }
 
-{-| Actions of the duration; just use `Start` to initiate it. You can supply some
-    method for issuing actions upon completion of the duration: To make it _always_
-    issue some action when completed, use `Start <| always <| Task.perform xx identity <| Task.succeed SomeAction`.
-    To additively add more actions upon completion, use `Start <| \x -> Cmd.batch [x, myCommand]`.
-    Note that this will adjust the action _during_ the duration, and __is__ mutable and thus
-    may cause race conditions - _use wisely_.
+{-| 
 -}
 type Msg a
-  = Start (Cmd a -> Cmd a)
+  = Forward (Cmd a -> Cmd a)
+  | Reverse (Cmd a -> Cmd a)
+  | Toggle  (Cmd a -> Cmd a)
   | Tick Time
 
-{-| Given a way to handle duration messages, you can handle the results -}
-handle : (Msg a -> a) -> Result (Msg a) a -> a
-handle f m =
-  case m of
-    Err x -> f x
-    Ok x  -> x
 
 {-| Given a time-indexed command and the length of time the animation should play over, create an update function. -}
 update : (Time -> Cmd a)
       -> Time
       -> Msg a
       -> Model a
-      -> (Model a, Cmd (Result (Msg a) a))
+      -> (Model a, Cmd a)
 update actions duration action model =
   case action of
-    Start withCompletion ->
+    Forward withCompletion ->
       case model.elapsed of
-        Just _ ->
-          ( let onCompletion' = withCompletion model.onCompletion
-            in  { model | onCompletion = onCompletion' }
+        Nothing ->
+          ( { model | onCompletion = withCompletion model.onCompletion
+                    , elapsed      = Just (0, Forwards)
+            }
+          , actions 0
+          )
+        Just (oldTime, direction) ->
+          case direction of
+            Forwards ->
+              ( { model | onCompletion = withCompletion model.onCompletion }
+              , Cmd.none
+              )
+            Backwards ->
+              ( { model | onCompletion = withCompletion model.onCompletion
+                        , elapsed      = Just (oldTime, Forwards)
+                }
+              , Cmd.none
+              )
+    Reverse withCompletion ->
+      case model.elapsed of
+        Nothing ->
+          ( { model | onCompletion = withCompletion model.onCompletion
+                    , elapsed      = Just (duration, Backwards)
+            }
+          , actions duration
+          )
+        Just (oldTime, direction) ->
+          case direction of
+            Backwards ->
+              ( { model | onCompletion = withCompletion model.onCompletion }
+              , Cmd.none
+              )
+            Forwards ->
+              ( { model | onCompletion = withCompletion model.onCompletion
+                        , elapsed      = Just (oldTime, Backwards)
+                }
+              , Cmd.none
+              )
+    Toggle withCompletion ->
+      case model.elapsed of
+        Nothing ->
+          ( { model | onCompletion = withCompletion model.onCompletion }
           , Cmd.none
           )
-        Nothing ->
-          ( let onCompletion' = withCompletion model.onCompletion
-            in  { model | onCompletion = onCompletion' }
-          , Task.perform Debug.crash (Err << Tick) Time.now
+        Just (oldTime, direction) ->
+          ( { model | onCompletion = withCompletion model.onCompletion
+                    , elapsed = Just ( oldTime
+                                     , case direction of
+                                         Forwards -> Backwards
+                                         Backwards -> Forwards
+                                     )
+            }
+          , Cmd.none
           )
-    Tick now ->
+    Tick diff ->
       case model.elapsed of
-        Nothing ->
-          ( { model | elapsed = Just now }
-          , Cmd.map Ok <| actions 0
-          )
-        Just past ->
-          if now - past > duration
-          then ( { model | elapsed = Nothing }
-               , Cmd.map Ok <| Cmd.batch
-                   [ actions duration
-                   , model.onCompletion
-                   ]
-               )
-          else ( model
-               , Cmd.map Ok <| actions <| now - past
-               )
+        Nothing -> Debug.crash "Somehow in bad state"
+        Just (oldTime, direction) ->
+          case direction of
+            Forwards  ->
+              let newTime = oldTime + diff
+              in if newTime >= duration
+              then
+                ( { model | elapsed = Nothing }
+                , Cmd.batch
+                    [ actions duration
+                    , model.onCompletion
+                    ]
+                )
+              else
+                ( { model | elapsed = Just (newTime, direction) }
+                , actions newTime
+                )
+            Backwards ->
+              let newTime = oldTime - diff
+              in if newTime <= 0
+              then
+                ( { model | elapsed = Nothing }
+                , Cmd.batch
+                    [ actions 0
+                    , model.onCompletion
+                    ]
+                )
+              else
+                ( { model | elapsed = Just (newTime, direction) }
+                , actions newTime
+                )
 
 
 {-| The subscriptions for the duration - every time the browser screen refreshes. -}
@@ -112,4 +162,4 @@ subscriptions : Model a -> Sub (Msg a)
 subscriptions model =
   case model.elapsed of
     Nothing -> Sub.none
-    Just _  -> Anim.times Tick
+    Just _  -> Anim.diffs Tick
