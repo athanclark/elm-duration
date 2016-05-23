@@ -1,4 +1,4 @@
-module Duration.Revert exposing
+module Duration exposing
   ( Model
   , init
   , Msg (Forward, Reverse, Toggle)
