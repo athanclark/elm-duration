@@ -5,44 +5,50 @@ over some time duration.
 
 ```elm
 type alias MyModel =
-  { someComponent : MyComponent
-  , duration : Duration
+  { someComponent : MyComponent.Model
+  , duration : Duration.Model
   }
 
 initMyModel : MyModel
 initMyModel =
-  { someComponent = initMyComponent
-  , duration = initDuration
+  { someComponent = MyComponent.init
+  , duration = Duration.init
   }
 
 type MyMsg
-  = ComponentMsg MyComponentMsg
-  | DurationMsg DurationMsg
+  = ComponentMsg MyComponent.Msg
+  | DurationMsg Duration.Msg
 
 updateMyModel : MyMsg -> MyModel -> (MyModel, Cmd MyMsg)
 updateMyModel action model =
   case action of
     ComponentMsg a ->
-      let (newComponent, eff) = updateComponent a model.someComponent
+      let (newComponent, eff) = Component.update a model.someComponent
       in  ( { model | someComponent = newComponent }
           , Cmd.map ComponentMsg eff
           )
     DurationMsg a ->
-      let (newDuration, eff) = updateDuration
-                                 [(outQuad, ComponentMsg << MyComponentVisibility)]
-                                 (2 * second) a model.duration
+      let (newDuration, eff) = Duration.update
+                                 (\t -> Task.perform Debug.log ComponentMsg <|
+                                          Task.succeed <| MyComponentVisibility <|
+                                            outQuad <| t / (2*second)
+                                 (2 * second)
+                                 a
+                                 model.duration
       in  ( { model | duration = newDuration }
-          , Cmd.map (handleDurationResults DurationMsg) eff
+          , eff
           )
 
 subscriptions : MyModel -> Sub MyMsg
-subscriptions = Sub.map DurationMsg <| durationSubscriptions model.duration
+subscriptions = Sub.map DurationMsg <| Duration.subscriptions model.duration
 
 view : MyModel -> Html MyMsg
 view model =
   div []
     [ viewMyComponent model.someComponent
-    , button [ onClick <| DurationMsg Start
+    , button [ onClick <| DurationMsg <| Duration.Forward <|
+                 \_ -> Task.perform Debug.log ComponentMsg <|
+                         Task.succeed TransitionComplete
              ] [text "Start animation"]
     ]
 
