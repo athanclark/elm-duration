@@ -37,33 +37,37 @@ type Direction
   | Backwards
 
 {-| The state of the duration -}
-type alias Model a =
+type alias Model b =
   { elapsed      : Maybe (Time, Direction)
-  , onCompletion : Cmd a
+  , onCompletion : Cmd b
   }
 
 {-| The initial state of the duration -}
-init : Model a
+init : Model b
 init =
   { elapsed      = Nothing
   , onCompletion = Cmd.none
   }
 
-{-| 
+{-| Either trigger the transition to explicitly go `Forward`, `Reverse`,
+    or `Toggle` its playback, where `b` is the effect to be played when
+    the transition finishes.
 -}
-type Msg a
-  = Forward (Cmd a -> Cmd a)
-  | Reverse (Cmd a -> Cmd a)
-  | Toggle  (Cmd a -> Cmd a)
+type Msg b
+  = Forward (Cmd b -> Cmd b)
+  | Reverse (Cmd b -> Cmd b)
+  | Toggle  (Cmd b -> Cmd b)
   | Tick Time
 
 
-{-| Given a time-indexed command and the length of time the animation should play over, create an update function. -}
+{-| Given a time-indexed command and the length of time the animation
+    should play over, create an update function.
+-}
 update : (Time -> Cmd a)
       -> Time
-      -> Msg a
-      -> Model a
-      -> (Model a, Cmd a)
+      -> Msg b
+      -> Model b
+      -> (Model b, Cmd (Result a b))
 update actions duration action model =
   case action of
     Forward withCompletion ->
@@ -72,7 +76,7 @@ update actions duration action model =
           ( { model | onCompletion = withCompletion model.onCompletion
                     , elapsed      = Just (0, Forwards)
             }
-          , actions 0
+          , Cmd.map Err <| actions 0
           )
         Just (oldTime, direction) ->
           case direction of
@@ -92,7 +96,7 @@ update actions duration action model =
           ( { model | onCompletion = withCompletion model.onCompletion
                     , elapsed      = Just (duration, Backwards)
             }
-          , actions duration
+          , Cmd.map Err <| actions duration
           )
         Just (oldTime, direction) ->
           case direction of
@@ -133,13 +137,13 @@ update actions duration action model =
               then
                 ( { model | elapsed = Nothing }
                 , Cmd.batch
-                    [ actions duration
-                    , model.onCompletion
+                    [ Cmd.map Err <| actions duration
+                    , Cmd.map Ok <| model.onCompletion
                     ]
                 )
               else
                 ( { model | elapsed = Just (newTime, direction) }
-                , actions newTime
+                , Cmd.map Err <| actions newTime
                 )
             Backwards ->
               let newTime = oldTime - diff
@@ -147,18 +151,18 @@ update actions duration action model =
               then
                 ( { model | elapsed = Nothing }
                 , Cmd.batch
-                    [ actions 0
-                    , model.onCompletion
+                    [ Cmd.map Err <| actions 0
+                    , Cmd.map Ok <| model.onCompletion
                     ]
                 )
               else
                 ( { model | elapsed = Just (newTime, direction) }
-                , actions newTime
+                , Cmd.map Err <| actions newTime
                 )
 
 
 {-| The subscriptions for the duration - every time the browser screen refreshes. -}
-subscriptions : Model a -> Sub (Msg a)
+subscriptions : Model b -> Sub (Msg b)
 subscriptions model =
   case model.elapsed of
     Nothing -> Sub.none
