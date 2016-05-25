@@ -32,6 +32,7 @@ updateMyModel action model =
                                  (\t -> Task.perform Debug.log ComponentMsg <|
                                           Task.succeed <| MyComponentVisibility <|
                                             outQuad <| t / (2*second)
+                                 )
                                  (2 * second)
                                  a
                                  model.duration
@@ -47,8 +48,8 @@ view model =
   div []
     [ viewMyComponent model.someComponent
     , button [ onClick <| DurationMsg <| Duration.Forward <|
-                 \_ -> Task.perform Debug.log ComponentMsg <|
-                         Task.succeed TransitionComplete
+                            \_ -> Task.perform Debug.log ComponentMsg <|
+                                    Task.succeed TransitionComplete
              ] [text "Start animation"]
     ]
 
